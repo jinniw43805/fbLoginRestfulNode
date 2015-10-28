@@ -16,14 +16,19 @@ var FacebookStrategy = require('passport-facebook').Strategy;
 var FACEBOOK_APP_ID = '1652565571693511';
 var FACEBOOK_APP_SECRET = '9ce154d4db11dc6e856f5d9141acd4e9';
 var mongoose = require('mongoose');
+var uriUtil = require('mongodb-uri');
 // DB stuff
+var options = { server: { socketOptions: { keepAlive: 1, connectTimeoutMS: 30000 } }, 
+                replset: { socketOptions: { keepAlive: 1, connectTimeoutMS : 30000 } } };       
+var mongodbUri = 'mongodb://tony:tony123@ds045464.mongolab.com:45464/agilemount';
+var mongooseUri = uriUtil.formatMongoose(mongodbUri);
 
 // Connect to the db
-mongoose.connect = ('mongodb://root:grmu5h6k@ds045464.mongolab.com:45464/agilemount', function(err){
-	if(err){
-	console.log("We cant connect");
-	}
-});
+mongoose.connect(mongooseUri, options);
+var conn = mongoose.connection;             
+ 
+conn.on('error', console.error.bind(console, 'connection error:'));  
+ 
 
 var User = mongoose.model('User',{
 	oauthID : Number,
@@ -45,6 +50,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(passport.initialize());
 app.use(passport.session());
 app.use('/', routes);
+
 app.use('/users', users);
 
 // catch 404 and forward to error handler
@@ -121,45 +127,48 @@ passport.use(new FacebookStrategy({
 },
 function(accessToken, refreshToken, profile, done) {
   process.nextTick(function () {
-    console.log(profile);
-    return done(null, profile);
+     console.log(accessToken);
+     console.log(profile);
+    // return done(null, profile);
+    User.findOne({ oauthID: profile.id }, function(err, user) {
+     if(err) { console.log(err); }
+     if (!err && user != null) {
+       done(null, user);
+     } else {
 
+      console.log("start storing...");
+       var user = new User({
+         oauthID: profile.id,
+         name: profile.displayName,
+         created: Date.now()
+       });
+       user.save(function(err) {
+         if(err) {
+           console.log(err);
+         } else {
+           console.log("saving user ...");
+           done(null, user);
+         };
+       });
+     };
+    });
   });
-// User.findOne({ oauthID: profile.id }, function(err, user) {
-//  if(err) { console.log(err); }
-//  if (!err && user != null) {
-//    done(null, user);
-//  } else {
-//    var user = new User({
-//      oauthID: profile.id,
-//      name: profile.displayName,
-//      created: Date.now()
-//    });
-//    user.save(function(err) {
-//      if(err) {
-//        console.log(err);
-//      } else {
-//        console.log("saving user ...");
-//        done(null, user);
-//      };
-//    });
-//  };
-// });
+
   }
 ));
 
 passport.serializeUser(function(user, done) {
-  // console.log('serializeUser: ' + user._id)
+  console.log('serializeUser: ' + user._id)
   done(null, user);
 });
 
 passport.deserializeUser(function(obj, done) {
-	// User.findById(id, function(err, user){
- //     console.log(user);
- //     if(!err) done(null, user);
- //     else   done(err, null)p
- done(null, obj);
- // })
+	User.findById(obj, function(err, user){
+     console.log(user);
+     if(!err) done(null, user);
+     else   done(err, null)
+ //done(null, obj);
+  })
 });
 
 
